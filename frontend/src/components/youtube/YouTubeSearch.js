@@ -12,13 +12,17 @@ import {
   Chip,
   Alert,
   CircularProgress,
-  InputAdornment,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Search,
-  Bookmark,
-  BookmarkBorder,
   PlayArrow,
+  Bookmark,
+  Info,
+  BookmarkBorder,
 } from '@mui/icons-material';
 import { youtubeService } from '../../services/youtubeService';
 
@@ -27,26 +31,22 @@ const YouTubeSearch = () => {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [savedVideos, setSavedVideos] = useState(new Set());
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
+  const handleSearch = async () => {
     if (!query.trim()) return;
 
     setLoading(true);
     setError('');
 
     try {
-      const searchResults = await youtubeService.searchVideos(query, 20);
-      setVideos(searchResults);
-      
-      // Get current saved videos to check which ones are already saved
-      const currentSaved = await youtubeService.getSavedVideos();
-      const savedIds = new Set(currentSaved.map(video => video.video_id));
-      setSavedVideos(savedIds);
+      const result = await youtubeService.searchVideos(query);
+      setVideos(Array.isArray(result) ? result : []);
     } catch (error) {
-      setError('Failed to search videos. Please try again.');
       console.error('Search error:', error);
+      setError('Failed to search videos. Please try again.');
+      setVideos([]);
     } finally {
       setLoading(false);
     }
@@ -54,32 +54,22 @@ const YouTubeSearch = () => {
 
   const handleSaveVideo = async (video) => {
     try {
-      await youtubeService.saveVideo({
-        video_id: video.id,
-        video_title: video.title,
-        video_description: video.description,
-        channel_title: video.channelTitle,
-        thumbnail_url: video.thumbnail,
-        published_at: video.publishedAt,
-      });
-      
-      setSavedVideos(prev => new Set([...prev, video.id]));
+      const videoData = {
+        videoId: video.id.videoId,
+        title: video.snippet.title,
+        channelTitle: video.snippet.channelTitle,
+        thumbnail: video.snippet.thumbnails.medium.url,
+      };
+      await youtubeService.saveVideo(videoData);
+      // Show success message or update UI
     } catch (error) {
       console.error('Error saving video:', error);
     }
   };
 
-  const handleRemoveVideo = async (videoId) => {
-    try {
-      await youtubeService.removeSavedVideo(videoId);
-      setSavedVideos(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(videoId);
-        return newSet;
-      });
-    } catch (error) {
-      console.error('Error removing video:', error);
-    }
+  const handleVideoClick = (video) => {
+    setSelectedVideo(video);
+    setDialogOpen(true);
   };
 
   const formatDate = (dateString) => {
@@ -87,7 +77,7 @@ const YouTubeSearch = () => {
   };
 
   const truncateText = (text, maxLength = 100) => {
-    if (text.length <= maxLength) return text;
+    if (!text || text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
   };
 
@@ -97,23 +87,25 @@ const YouTubeSearch = () => {
         Search YouTube Videos
       </Typography>
 
-      <Box component="form" onSubmit={handleSearch} sx={{ mb: 4 }}>
-        <TextField
-          fullWidth
-          variant="outlined"
-          placeholder="Search for videos..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          InputProps={{
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton type="submit" disabled={loading}>
-                  {loading ? <CircularProgress size={20} /> : <Search />}
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
+      <Box sx={{ mb: 3 }}>
+        <Box display="flex" gap={2} alignItems="center">
+          <TextField
+            fullWidth
+            label="Search videos"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="Enter search terms..."
+          />
+          <Button
+            variant="contained"
+            onClick={handleSearch}
+            disabled={loading || !query.trim()}
+            startIcon={loading ? <CircularProgress size={20} /> : <Search />}
+          >
+            {loading ? 'Searching...' : 'Search'}
+          </Button>
+        </Box>
       </Box>
 
       {error && (
@@ -122,63 +114,68 @@ const YouTubeSearch = () => {
         </Alert>
       )}
 
-      {videos.length > 0 && (
+      {Array.isArray(videos) && videos.length > 0 && (
         <Grid container spacing={3}>
           {videos.map((video) => (
-            <Grid item xs={12} sm={6} md={4} key={video.id}>
+            <Grid item xs={12} sm={6} md={4} key={`video-${video.id.videoId}`}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardMedia
                   component="img"
                   height="140"
-                  image={video.thumbnail}
-                  alt={video.title}
+                  image={video.snippet.thumbnails.medium.url}
+                  alt={video.snippet.title}
                   sx={{ objectFit: 'cover' }}
                 />
                 <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" component="h3" gutterBottom>
-                    {truncateText(video.title, 60)}
+                    {truncateText(video.snippet.title, 60)}
                   </Typography>
                   
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2, flexGrow: 1 }}>
-                    {truncateText(video.description)}
+                    {truncateText(video.snippet.description)}
                   </Typography>
 
                   <Box sx={{ mb: 2 }}>
                     <Chip
-                      label={video.channelTitle}
+                      label={video.snippet.channelTitle}
                       size="small"
                       variant="outlined"
                       sx={{ mr: 1 }}
                     />
                     <Chip
-                      label={formatDate(video.publishedAt)}
+                      label={formatDate(video.snippet.publishedAt)}
                       size="small"
                       variant="outlined"
                     />
                   </Box>
 
                   <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Button
-                      size="small"
-                      startIcon={<PlayArrow />}
-                      href={`https://www.youtube.com/watch?v=${video.id}`}
-                      target="_blank"
-                    >
-                      Watch
-                    </Button>
+                    <Box>
+                      <Button
+                        size="small"
+                        startIcon={<PlayArrow />}
+                        href={`https://www.youtube.com/watch?v=${video.id.videoId}`}
+                        target="_blank"
+                        sx={{ mr: 1 }}
+                      >
+                        Watch
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<Info />}
+                        onClick={() => handleVideoClick(video)}
+                      >
+                        Details
+                      </Button>
+                    </Box>
                     
                     <IconButton
                       size="small"
-                      onClick={() => {
-                        if (savedVideos.has(video.id)) {
-                          handleRemoveVideo(video.id);
-                        } else {
-                          handleSaveVideo(video);
-                        }
-                      }}
-                      color={savedVideos.has(video.id) ? 'primary' : 'default'}
+                      color="primary"
+                      onClick={() => handleSaveVideo(video)}
+                      title="Save video"
                     >
-                      {savedVideos.has(video.id) ? <Bookmark /> : <BookmarkBorder />}
+                      <BookmarkBorder />
                     </IconButton>
                   </Box>
                 </CardContent>
@@ -188,24 +185,63 @@ const YouTubeSearch = () => {
         </Grid>
       )}
 
-      {!loading && videos.length === 0 && query && (
+      {Array.isArray(videos) && videos.length === 0 && !loading && query && (
         <Box textAlign="center" py={4}>
-          <Typography variant="h6" color="text.secondary">
-            No videos found for "{query}"
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No videos found
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Try a different search term
+            Try different search terms
           </Typography>
         </Box>
       )}
 
-      {!query && !loading && (
-        <Box textAlign="center" py={4}>
-          <Typography variant="h6" color="text.secondary">
-            Enter a search term to find YouTube videos
-          </Typography>
-        </Box>
-      )}
+      {/* Video Details Dialog */}
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedVideo && (
+          <>
+            <DialogTitle>{selectedVideo.snippet.title}</DialogTitle>
+            <DialogContent>
+              <Box display="flex" gap={2} mb={2}>
+                <img
+                  src={selectedVideo.snippet.thumbnails.medium.url}
+                  alt={selectedVideo.snippet.title}
+                  style={{ width: 200, height: 150, objectFit: 'cover' }}
+                />
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    {selectedVideo.snippet.channelTitle}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Published: {formatDate(selectedVideo.snippet.publishedAt)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Video ID: {selectedVideo.id.videoId}
+                  </Typography>
+                </Box>
+              </Box>
+              <Typography variant="body1">
+                {selectedVideo.snippet.description}
+              </Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button
+                href={`https://www.youtube.com/watch?v=${selectedVideo.id.videoId}`}
+                target="_blank"
+                startIcon={<PlayArrow />}
+              >
+                Watch on YouTube
+              </Button>
+              <Button onClick={() => setDialogOpen(false)}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
     </Box>
   );
 };

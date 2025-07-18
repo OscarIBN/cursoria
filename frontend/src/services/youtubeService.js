@@ -67,30 +67,18 @@ export const youtubeService = {
   // Get user's saved videos
   getSavedVideos: async () => {
     const response = await api.get('/users/saved-videos');
-    return response.data.savedVideos;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   // Save a video
   saveVideo: async (videoData) => {
-    const response = await api.post('/users/save-video', videoData);
+    const response = await api.post('/users/saved-videos', videoData);
     return response.data;
   },
 
   // Remove saved video
   removeSavedVideo: async (videoId) => {
     const response = await api.delete(`/users/saved-videos/${videoId}`);
-    return response.data;
-  },
-
-  // Get user's YouTube data
-  getUserYouTubeData: async () => {
-    const response = await api.get('/users/youtube-data');
-    return response.data.youtubeData;
-  },
-
-  // Update user's YouTube data
-  updateUserYouTubeData: async (youtubeData) => {
-    const response = await api.post('/users/youtube-data', youtubeData);
     return response.data;
   },
 }; 
